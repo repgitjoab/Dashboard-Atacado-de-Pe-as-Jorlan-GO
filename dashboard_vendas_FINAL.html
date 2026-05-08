@@ -1054,18 +1054,19 @@ function renderOverview() {
   const prevD  = new Date(HOJE.getFullYear(), HOJE.getMonth()-1, 1);
   const prevYM = ym(prevD);
 
-  const fatAcum   = vendas.reduce((s,r)=>s+r.valVenda, 0);
-  const lucTotal  = vendas.reduce((s,r)=>s+r.valLuc,   0);
+  const fatBruto  = vendas.reduce((s,r)=>s+r.valVenda, 0);
+  const fatAcum   = FILTERED.reduce((s,r)=>s+r.valVenda, 0); // líquido (já desconta devoluções negativas)
+  const lucTotal  = FILTERED.reduce((s,r)=>s+r.valLuc, 0); // já considera devoluções
   const margem    = fatAcum ? (lucTotal/fatAcum)*100 : 0;
-  const fatAtual  = vendas.filter(r=>r.ym===nowYM).reduce((s,r)=>s+r.valVenda,0);
-  const fatAnt    = vendas.filter(r=>r.ym===prevYM).reduce((s,r)=>s+r.valVenda,0);
-  const totalDev  = devs.reduce((s,r)=>s+Math.abs(r.valVenda),0);
+  const fatAtual  = FILTERED.filter(r=>r.ym===nowYM).reduce((s,r)=>s+r.valVenda,0);
+  const fatAnt    = FILTERED.filter(r=>r.ym===prevYM).reduce((s,r)=>s+r.valVenda,0);
+  const totalDev  = Math.abs(devs.reduce((s,r)=>s+r.valVenda,0));
   const txDev     = fatAcum ? (totalDev/(fatAcum+totalDev))*100 : 0;
 
   document.getElementById('fat-total-label').textContent = fmtK(fatAcum);
   document.getElementById('kpi-grid').innerHTML = `
     <div class="kpi-card kpi-blue">
-      <div class="kpi-label" id="kpi-label-total">Vendas Totais</div>
+      <div class="kpi-label">Faturamento Líquido</div>
       <div class="kpi-value">${fmtK(fatAcum)}</div>
       <div class="kpi-sub">excluindo devoluções</div>
     </div>
@@ -1096,15 +1097,15 @@ function renderOverview() {
     </div>
   `;
 
-  // agrupar por mês
+  // agrupar por mês — usar FILTERED completo para líquido (devoluções já são negativas)
   const byMes = {};
-  vendas.forEach(r => {
+  FILTERED.forEach(r => {
     if (!r.ym) return;
     if (!byMes[r.ym]) byMes[r.ym] = {fat:0,custo:0,luc:0,mrgs:[],nfs:new Set()};
     byMes[r.ym].fat   += r.valVenda;
     byMes[r.ym].custo += r.valCusto;
     byMes[r.ym].luc   += r.valLuc;
-    byMes[r.ym].mrgs.push(r.valMrg);
+    if (!r.stDev) byMes[r.ym].mrgs.push(r.valMrg);
     byMes[r.ym].nfs.add(r.nf);
   });
   const devByMes = {};
