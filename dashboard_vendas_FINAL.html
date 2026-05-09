@@ -764,16 +764,26 @@ function parseMoney(str) {
 function parseDate(str) {
   if (!str) return null;
   str = String(str).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const d = new Date(str+'T00:00:00'); return isNaN(d)?null:d; }
+  // Remover parte de hora se existir: "02/01/2026 00:00:00" ou "2026-01-02T03:00:00.000Z"
+  str = str.replace(/\s+\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z)?$/,'').trim();
+  str = str.replace(/T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z)?$/,'').trim();
+  // Formato ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const d = new Date(str + 'T00:00:00');
+    return isNaN(d) ? null : d;
+  }
+  // Formato com barra: DD/MM/YYYY ou MM/DD/YYYY
   const p = str.split('/');
   if (p.length >= 3) {
-    let [a,b,c] = p.map(Number);
+    let [a, b, c] = p.map(s => parseInt(s, 10));
     if (c < 100) c += 2000;
-    if (a > 12) return new Date(c, b-1, a);    // DD/MM/YYYY
-    if (b > 12) return new Date(c, a-1, b);    // MM/DD/YYYY
-    return new Date(c, b-1, a);                // assume DD/MM
+    if (a > 12) return new Date(c, b-1, a);  // DD/MM/YYYY
+    if (b > 12) return new Date(c, a-1, b);  // MM/DD/YYYY
+    return new Date(c, b-1, a);              // assume DD/MM/YYYY
   }
-  return null;
+  // Tentar parse nativo como último recurso
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
 }
 function ym(d) {
   if (!d) return null;
@@ -913,12 +923,14 @@ function buildJoined() {
   // Indexar VENDA por chave Nota+Item
   const vendaByKey = {};
   RAW.venda.forEach(r => {
-    const nota = getCol(r, 'Nota');
-    const item = getCol(r, 'Cod. Item', 'Cód. Item', 'Cod Item');
-    if (!nota) return;
-    const key = nota + '§' + item;
+    const notaRaw = getCol(r, 'Nota');
+    const item    = getCol(r, 'Cod. Item', 'Cód. Item', 'Cod Item');
+    if (!notaRaw) return;
+    // normalizar nota: remover pontos de milhar
+    const nota = notaRaw.replace(/\./g, '').trim();
+    const itemNorm = item.replace(/\./g, '').trim();
+    const key = nota + '§' + itemNorm;
     if (!vendaByKey[key]) vendaByKey[key] = r;
-    // também indexar só pela nota (fallback)
     if (!vendaByKey['nota§'+nota]) vendaByKey['nota§'+nota] = r;
   });
 
@@ -946,8 +958,8 @@ function buildJoined() {
   });
 
   JOINED = RAW.margem.map(m => {
-    const nf   = getCol(m, 'NF');
-    const item = getCol(m, 'Item');
+    const nf   = getCol(m, 'NF').replace(/\./g,'').trim();
+    const item = getCol(m, 'Item').replace(/\./g,'').trim();
     const key  = nf + '§' + item;
 
     // buscar linha de VENDA
