@@ -943,7 +943,8 @@ function buildJoined() {
     const codClienteRaw = getCol(v, 'Cod. Cliente', 'Cód. Cliente', 'Cod Cliente').replace(/\D/g,'');
     // tentar com zeros, sem zeros, e como CNPJ/CPF formatado
     const codCliente = codClienteRaw;
-    const nomeCliente = getCol(v, 'Nome Cliente');
+    const nomeClienteRaw = getCol(v, 'Nome Cliente');
+    const nomeCliente = nomeClienteRaw || '';
     const clienteRow = clientesByDoc[codCliente] 
       || clientesByDoc[codCliente.replace(/^0+/,'')]
       || clientesByDoc[codCliente.padStart(14,'0')]
@@ -982,7 +983,7 @@ function buildJoined() {
       loja: getCol(vendRow,'LOJA'),
       statusVend: getCol(vendRow,'STATUS'),
       // cliente
-      nomeCliente: nomeCliente || getCol(clienteRow,'Nome Cliente'),
+      nomeCliente: (nomeCliente || getCol(clienteRow,'Nome Cliente') || '').trim() || null,
       docCliente,
       tipo,
       cidade: getCol(v,'Municipio') || getCol(clienteRow,'Cidade'),
@@ -1244,7 +1245,7 @@ function renderClientes() {
   const byClienteRaiz={};
   vendas.forEach(r=>{
     const raiz = cnpjRaiz(r.docCliente) || r.nomeCliente || 'N/D';
-    const nm = r.nomeCliente||'N/D';
+    const nm = r.nomeCliente || (r.tipo==='PF' ? 'Clientes CPF' : 'N/D');
     if(!byClienteRaiz[raiz]) byClienteRaiz[raiz]={fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente,nm,filiais:new Set()};
     byClienteRaiz[raiz].fat+=r.valVenda; byClienteRaiz[raiz].nfs.add(r.nf);
     byClienteRaiz[raiz].filiais.add(r.docCliente);
@@ -1254,7 +1255,7 @@ function renderClientes() {
   const byCliente={};
   vendas.forEach(r=>{
     const key = r.docCliente || norm(r.nomeCliente) || 'nd';
-    const nm=r.nomeCliente||'N/D';
+    const nm = r.nomeCliente || (r.tipo==='PF' ? 'Clientes CPF' : 'N/D');
     if(!byCliente[key]) byCliente[key]={nm,fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente};
     byCliente[key].fat+=r.valVenda; byCliente[key].nfs.add(r.nf);
     if(!byCliente[key].ultimaDt||r.dtVenda>byCliente[key].ultimaDt){byCliente[key].ultimaDt=r.dtVenda;byCliente[key].vendedor=r.nomeVendedor;byCliente[key].nm=nm;}
@@ -1341,7 +1342,7 @@ function renderInativos() {
   const byCliente={};
   vendas.forEach(r=>{
     const key = r.docCliente || norm(r.nomeCliente) || 'nd';
-    const nm=r.nomeCliente||'N/D';
+    const nm = r.nomeCliente || (r.tipo==='PF' ? 'Clientes CPF' : 'N/D');
     if(!byCliente[key]) byCliente[key]={nm,fat:0,nfs:new Set(),ultimaDt:null,ultimaVend:'',tipo:r.tipo,cidade:r.cidade,uf:r.uf,doc:r.docCliente,tel:r.tel};
     byCliente[key].fat+=r.valVenda; byCliente[key].nfs.add(r.nf);
     if(!byCliente[key].ultimaDt||r.dtVenda>byCliente[key].ultimaDt){byCliente[key].ultimaDt=r.dtVenda;byCliente[key].ultimaVend=r.nomeVendedor;byCliente[key].nm=nm;}
