@@ -801,6 +801,13 @@ function classifyCanal(nomeCliente, canalVendedor) {
 // TIPO DE PESSOA (PF/PJ pelo tamanho do CNPJ/CPF)
 // CPF: 11 dígitos | CNPJ: 14 dígitos
 // ═══════════════════════════════════════════════════════
+// Retorna CNPJ raiz (8 primeiros dígitos) para agrupar filiais
+function cnpjRaiz(doc) {
+  const digits = String(doc||'').replace(/\D/g,'');
+  if (digits.length >= 14) return digits.substring(0,8); // CNPJ raiz
+  return digits; // CPF — retorna completo
+}
+
 function tipoPessoa(doc) {
   const digits = String(doc||'').replace(/\D/g,'');
   if (digits.length <= 11) return 'PF';
@@ -901,12 +908,15 @@ function buildJoined() {
     if (!vendaByKey['nota§'+nota]) vendaByKey['nota§'+nota] = r;
   });
 
-  // Indexar CLIENTES por CPF/CNPJ
+  // Indexar CLIENTES por CPF/CNPJ — normalizar zeros à esquerda
   const clientesByDoc = {};
   RAW.clientes.forEach(r => {
-    const doc = getCol(r, 'CPFCnpjCliente', 'CPF Cnpj Cliente').replace(/\D/g,'');
-    if (doc) clientesByDoc[doc] = r;
-    // também por nome
+    const docRaw = getCol(r, 'CPFCnpjCliente', 'CPF Cnpj Cliente').replace(/[^0-9]/g,'');
+    if (!docRaw) return;
+    clientesByDoc[docRaw] = r;
+    clientesByDoc[docRaw.replace(/^0+/,'')] = r;
+    clientesByDoc[docRaw.padStart(14,'0')] = r;
+    clientesByDoc[docRaw.padStart(11,'0')] = r;
     const nm = norm(getCol(r, 'Nome Cliente'));
     if (nm) clientesByDoc['nome§'+nm] = r;
   });
@@ -930,9 +940,15 @@ function buildJoined() {
     const v = vendaByKey[key] || vendaByKey['nota§'+nf] || {};
 
     // buscar CLIENTE pelo Cód. Cliente da aba VENDA
-    const codCliente = getCol(v, 'Cod. Cliente', 'Cód. Cliente', 'Cod Cliente').replace(/\D/g,'');
+    const codClienteRaw = getCol(v, 'Cod. Cliente', 'Cód. Cliente', 'Cod Cliente').replace(/\D/g,'');
+    // tentar com zeros, sem zeros, e como CNPJ/CPF formatado
+    const codCliente = codClienteRaw;
     const nomeCliente = getCol(v, 'Nome Cliente');
-    const clienteRow = clientesByDoc[codCliente] || clientesByDoc['nome§'+norm(nomeCliente)] || {};
+    const clienteRow = clientesByDoc[codCliente] 
+      || clientesByDoc[codCliente.replace(/^0+/,'')]
+      || clientesByDoc[codCliente.padStart(14,'0')]
+      || clientesByDoc[codCliente.padStart(11,'0')]
+      || clientesByDoc['nome§'+norm(nomeCliente)] || {};
 
     // buscar VENDEDOR
     const usuVenda = getCol(v, 'Vendedor').toUpperCase();
@@ -1224,18 +1240,32 @@ function renderVendedores() {
 // ═══════════════════════════════════════════════════════
 function renderClientes() {
   const vendas=FILTERED.filter(r=>!r.stDev);
+  // Agrupar por CNPJ raiz para ranking (junta filiais do mesmo grupo)
+  const byClienteRaiz={};
+  vendas.forEach(r=>{
+    const raiz = cnpjRaiz(r.docCliente) || r.nomeCliente || 'N/D';
+    const nm = r.nomeCliente||'N/D';
+    if(!byClienteRaiz[raiz]) byClienteRaiz[raiz]={fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente,nm,filiais:new Set()};
+    byClienteRaiz[raiz].fat+=r.valVenda; byClienteRaiz[raiz].nfs.add(r.nf);
+    byClienteRaiz[raiz].filiais.add(r.docCliente);
+    if(!byClienteRaiz[raiz].ultimaDt||r.dtVenda>byClienteRaiz[raiz].ultimaDt){byClienteRaiz[raiz].ultimaDt=r.dtVenda;byClienteRaiz[raiz].vendedor=r.nomeVendedor;byClienteRaiz[raiz].nm=nm;}
+  });
+  // Tabela ativos/inativos — também por CNPJ raiz para consistência
   const byCliente={};
   vendas.forEach(r=>{
+    const raiz = cnpjRaiz(r.docCliente) || norm(r.nomeCliente) || 'nd';
     const nm=r.nomeCliente||'N/D';
-    if(!byCliente[nm]) byCliente[nm]={fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente};
-    byCliente[nm].fat+=r.valVenda; byCliente[nm].nfs.add(r.nf);
-    if(!byCliente[nm].ultimaDt||r.dtVenda>byCliente[nm].ultimaDt){byCliente[nm].ultimaDt=r.dtVenda;byCliente[nm].vendedor=r.nomeVendedor;}
+    if(!byCliente[raiz]) byCliente[raiz]={nm,fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente};
+    byCliente[raiz].fat+=r.valVenda; byCliente[raiz].nfs.add(r.nf);
+    if(!byCliente[raiz].ultimaDt||r.dtVenda>byCliente[raiz].ultimaDt){byCliente[raiz].ultimaDt=r.dtVenda;byCliente[raiz].vendedor=r.nomeVendedor;byCliente[raiz].nm=nm;}
   });
 
-  const arrClientes=Object.entries(byCliente).map(([nm,v])=>({nm,...v,nfs:v.nfs.size,dias:diasAtras(v.ultimaDt)}));
+  const arrClientes=Object.entries(byCliente).map(([,v])=>({...v,nfs:v.nfs.size,dias:diasAtras(v.ultimaDt)}));
   const ativos=arrClientes.filter(r=>r.dias<=INATIVO_DIAS);
   const inativos=arrClientes.filter(r=>r.dias>INATIVO_DIAS);
   clientesAtivosAll=[...arrClientes].sort((a,b)=>b.fat-a.fat);
+  // Ranking usa agrupamento por CNPJ raiz
+  const arrClientesRaiz=Object.entries(byClienteRaiz).map(([raiz,v])=>({nm:v.nm,fat:v.fat,nfs:v.nfs.size,filiais:v.filiais.size,doc:v.doc})).sort((a,b)=>b.fat-a.fat);
 
   // KPI carteira
   const totalCarteira=arrClientes.length;
@@ -1263,9 +1293,9 @@ function renderClientes() {
     </div>
   `;
 
-  // ranking top clientes
-  const top10=clientesAtivosAll.slice(0,10); const maxF=top10[0]?.fat||1;
-  document.getElementById('rank-clientes-fat').innerHTML=top10.map(({nm,fat},i)=>`
+  // ranking top clientes — usa CNPJ raiz (agrupa filiais)
+  const top10=arrClientesRaiz.slice(0,10); const maxF=top10[0]?.fat||1;
+  document.getElementById('rank-clientes-fat').innerHTML=top10.map(({nm,fat,filiais},i)=>`
     <div class="rank-item">
       <span class="rank-pos ${i<3?['gold','silver','bronze'][i]:''}">${i+1}</span>
       <span class="rank-name">${nm}</span>
@@ -1310,14 +1340,15 @@ function renderInativos() {
   const vendas=JOINED.filter(r=>!r.stDev); // usa JOINED (não FILTERED) para inativos globais
   const byCliente={};
   vendas.forEach(r=>{
+    const raiz = cnpjRaiz(r.docCliente) || norm(r.nomeCliente) || 'nd';
     const nm=r.nomeCliente||'N/D';
-    if(!byCliente[nm]) byCliente[nm]={fat:0,nfs:new Set(),ultimaDt:null,ultimaVend:'',tipo:r.tipo,cidade:r.cidade,uf:r.uf,doc:r.docCliente,tel:r.tel};
-    byCliente[nm].fat+=r.valVenda; byCliente[nm].nfs.add(r.nf);
-    if(!byCliente[nm].ultimaDt||r.dtVenda>byCliente[nm].ultimaDt){byCliente[nm].ultimaDt=r.dtVenda;byCliente[nm].ultimaVend=r.nomeVendedor;}
+    if(!byCliente[raiz]) byCliente[raiz]={nm,fat:0,nfs:new Set(),ultimaDt:null,ultimaVend:'',tipo:r.tipo,cidade:r.cidade,uf:r.uf,doc:r.docCliente,tel:r.tel};
+    byCliente[raiz].fat+=r.valVenda; byCliente[raiz].nfs.add(r.nf);
+    if(!byCliente[raiz].ultimaDt||r.dtVenda>byCliente[raiz].ultimaDt){byCliente[raiz].ultimaDt=r.dtVenda;byCliente[raiz].ultimaVend=r.nomeVendedor;byCliente[raiz].nm=nm;}
   });
 
   inativosAll=Object.entries(byCliente)
-    .map(([nm,v])=>({nm,fat:v.fat,nfs:v.nfs.size,ultimaDt:v.ultimaDt,ultimaVend:v.ultimaVend,dias:diasAtras(v.ultimaDt),tipo:v.tipo,cidade:v.cidade,uf:v.uf,doc:v.doc,tel:v.tel}))
+    .map(([,v])=>({nm:v.nm,fat:v.fat,nfs:v.nfs.size,ultimaDt:v.ultimaDt,ultimaVend:v.ultimaVend,dias:diasAtras(v.ultimaDt),tipo:v.tipo,cidade:v.cidade,uf:v.uf,doc:v.doc,tel:v.tel}))
     .filter(r=>r.dias>INATIVO_DIAS)
     .sort((a,b)=>b.dias-a.dias);
 
