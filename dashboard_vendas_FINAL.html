@@ -563,8 +563,22 @@ tbody tr:hover td { background: var(--accent-l); }
     <div class="table-card">
       <div class="table-header">
         <span class="table-title">Clientes inativos — sem compra há +60 dias</span>
-        <div class="table-meta">
+        <div class="table-meta" style="flex-wrap:wrap;gap:8px">
           <div class="search-wrap"><input type="text" id="search-inativos" placeholder="Buscar..." oninput="filterInativosTable()"></div>
+          <select id="f-inativos-tipo" onchange="filterInativosTable()" style="font-size:12px">
+            <option value="">PF e PJ</option>
+            <option value="PJ">Pessoa Jurídica</option>
+            <option value="PF">Pessoa Física</option>
+          </select>
+          <select id="f-inativos-vend" onchange="filterInativosTable()" style="font-size:12px">
+            <option value="">Todos os vendedores</option>
+          </select>
+          <select id="f-inativos-dias" onchange="filterInativosTable()" style="font-size:12px">
+            <option value="">Todos os períodos</option>
+            <option value="60">60 a 90 dias</option>
+            <option value="90">90 a 180 dias</option>
+            <option value="180">Mais de 180 dias</option>
+          </select>
           <span class="table-count" id="inativos-count"></span>
           <button class="btn-export" onclick="exportCSV('inativos')">⬇ Exportar CSV</button>
         </div>
@@ -988,7 +1002,10 @@ function buildJoined() {
       tipo,
       cidade: getCol(v,'Municipio') || getCol(clienteRow,'Cidade'),
       uf,
-      tel: getCol(clienteRow,'Telefone Celular') || getCol(clienteRow,'Telefone Comercial'),
+      tel: [getCol(clienteRow,'Telefone Celular'),getCol(clienteRow,'Telefone Comercial'),getCol(clienteRow,'Telefone Residencial')].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),
+      telCelular: getCol(clienteRow,'Telefone Celular'),
+      telComercial: getCol(clienteRow,'Telefone Comercial'),
+      telResidencial: getCol(clienteRow,'Telefone Residencial'),
       email: getCol(clienteRow,'EMAIL'),
       tipoCliente: getCol(clienteRow,'TipoCliente'),
     };
@@ -1381,6 +1398,13 @@ function renderInativos() {
   `;
   document.getElementById('inativos-count').textContent=`${total} clientes`;
   renderInativosTable(inativosAll);
+  // Popular filtro de vendedores
+  const selVend = document.getElementById('f-inativos-vend');
+  if (selVend) {
+    const vendedores = [...new Set(inativosAll.map(r=>(r.ultimaVend||'').split(' ').slice(0,2).join(' ')).filter(Boolean))].sort();
+    selVend.innerHTML = '<option value="">Todos os vendedores</option>';
+    vendedores.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; selVend.appendChild(o); });
+  }
 }
 function renderInativosTable(arr) {
   document.getElementById('tbody-inativos').innerHTML=arr.map((r,i)=>`
@@ -1531,8 +1555,22 @@ function exportCSV(type) {
   let rows=[], filename='';
   if (type==='inativos') {
     filename='clientes_inativos.csv';
-    rows=[['#','Cliente','CNPJ/CPF','Cidade','UF','Telefone','Ultimo Vendedor','Ultima Compra','Dias Inativo','Total Historico','NFs']];
-    inativosAll.forEach((r,i)=>rows.push([i+1,r.nm,r.doc||'',r.cidade||'',r.uf||'',r.tel||'',(r.ultimaVend||'').split(' ').slice(0,2).join(' '),r.ultimaDt?r.ultimaDt.toLocaleDateString('pt-BR'):'',r.dias,r.fat.toFixed(2).replace('.',','),r.nfs]));
+    const exportList2 = (() => {
+      const q    = (document.getElementById('search-inativos')||{}).value?.toLowerCase()||'';
+      const tipo = (document.getElementById('f-inativos-tipo')||{}).value||'';
+      const vend = (document.getElementById('f-inativos-vend')||{}).value||'';
+      const dias = (document.getElementById('f-inativos-dias')||{}).value||'';
+      let f = inativosAll;
+      if (q)    f = f.filter(r=>r.nm.toLowerCase().includes(q)||(r.cidade||'').toLowerCase().includes(q));
+      if (tipo) f = f.filter(r=>r.tipo===tipo);
+      if (vend) f = f.filter(r=>(r.ultimaVend||'').includes(vend));
+      if (dias==='60')  f = f.filter(r=>r.dias>=60&&r.dias<90);
+      if (dias==='90')  f = f.filter(r=>r.dias>=90&&r.dias<180);
+      if (dias==='180') f = f.filter(r=>r.dias>=180);
+      return f;
+    })();
+    rows=[['#','Cliente','Tipo','CNPJ/CPF','Cidade','UF','Tel.Celular','Tel.Comercial','Tel.Residencial','Ultimo Vendedor','Ultima Compra','Dias Inativo','Total Historico','NFs']];
+    exportList2.forEach((r,i)=>rows.push([i+1,r.nm,r.tipo||'',r.doc||'',r.cidade||'',r.uf||'',r.telCelular||'',r.telComercial||'',r.telResidencial||'',(r.ultimaVend||'').split(' ').slice(0,2).join(' '),r.ultimaDt?r.ultimaDt.toLocaleDateString('pt-BR'):'',r.dias,r.fat.toFixed(2).replace('.',','),r.nfs]));
   } else if (type==='devolucoes') {
     filename='devolucoes_2026.csv';
     rows=[['Data','NF','Vendedor','Valor Devolvido','Custo','Margem %']];
