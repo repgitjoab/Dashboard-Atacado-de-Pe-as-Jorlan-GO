@@ -1250,14 +1250,14 @@ function renderClientes() {
     byClienteRaiz[raiz].filiais.add(r.docCliente);
     if(!byClienteRaiz[raiz].ultimaDt||r.dtVenda>byClienteRaiz[raiz].ultimaDt){byClienteRaiz[raiz].ultimaDt=r.dtVenda;byClienteRaiz[raiz].vendedor=r.nomeVendedor;byClienteRaiz[raiz].nm=nm;}
   });
-  // Tabela ativos/inativos — também por CNPJ raiz para consistência
+  // Tabela ativos/inativos — por CNPJ individual (cada filial separada)
   const byCliente={};
   vendas.forEach(r=>{
-    const raiz = cnpjRaiz(r.docCliente) || norm(r.nomeCliente) || 'nd';
+    const key = r.docCliente || norm(r.nomeCliente) || 'nd';
     const nm=r.nomeCliente||'N/D';
-    if(!byCliente[raiz]) byCliente[raiz]={nm,fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente};
-    byCliente[raiz].fat+=r.valVenda; byCliente[raiz].nfs.add(r.nf);
-    if(!byCliente[raiz].ultimaDt||r.dtVenda>byCliente[raiz].ultimaDt){byCliente[raiz].ultimaDt=r.dtVenda;byCliente[raiz].vendedor=r.nomeVendedor;byCliente[raiz].nm=nm;}
+    if(!byCliente[key]) byCliente[key]={nm,fat:0,nfs:new Set(),ultimaDt:null,tipo:r.tipo,cidade:r.cidade,uf:r.uf,canal:r.canalClassif,vendedor:r.nomeVendedor,doc:r.docCliente};
+    byCliente[key].fat+=r.valVenda; byCliente[key].nfs.add(r.nf);
+    if(!byCliente[key].ultimaDt||r.dtVenda>byCliente[key].ultimaDt){byCliente[key].ultimaDt=r.dtVenda;byCliente[key].vendedor=r.nomeVendedor;byCliente[key].nm=nm;}
   });
 
   const arrClientes=Object.entries(byCliente).map(([,v])=>({...v,nfs:v.nfs.size,dias:diasAtras(v.ultimaDt)}));
@@ -1340,11 +1340,11 @@ function renderInativos() {
   const vendas=JOINED.filter(r=>!r.stDev); // usa JOINED (não FILTERED) para inativos globais
   const byCliente={};
   vendas.forEach(r=>{
-    const raiz = cnpjRaiz(r.docCliente) || norm(r.nomeCliente) || 'nd';
+    const key = r.docCliente || norm(r.nomeCliente) || 'nd';
     const nm=r.nomeCliente||'N/D';
-    if(!byCliente[raiz]) byCliente[raiz]={nm,fat:0,nfs:new Set(),ultimaDt:null,ultimaVend:'',tipo:r.tipo,cidade:r.cidade,uf:r.uf,doc:r.docCliente,tel:r.tel};
-    byCliente[raiz].fat+=r.valVenda; byCliente[raiz].nfs.add(r.nf);
-    if(!byCliente[raiz].ultimaDt||r.dtVenda>byCliente[raiz].ultimaDt){byCliente[raiz].ultimaDt=r.dtVenda;byCliente[raiz].ultimaVend=r.nomeVendedor;byCliente[raiz].nm=nm;}
+    if(!byCliente[key]) byCliente[key]={nm,fat:0,nfs:new Set(),ultimaDt:null,ultimaVend:'',tipo:r.tipo,cidade:r.cidade,uf:r.uf,doc:r.docCliente,tel:r.tel};
+    byCliente[key].fat+=r.valVenda; byCliente[key].nfs.add(r.nf);
+    if(!byCliente[key].ultimaDt||r.dtVenda>byCliente[key].ultimaDt){byCliente[key].ultimaDt=r.dtVenda;byCliente[key].ultimaVend=r.nomeVendedor;byCliente[key].nm=nm;}
   });
 
   inativosAll=Object.entries(byCliente)
